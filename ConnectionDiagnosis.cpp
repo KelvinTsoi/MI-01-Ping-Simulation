@@ -1,14 +1,18 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
+/**************************************************************************
+**
+**	The author disclaims copyright to this source code.
+** 	In place of a legal notice, here is a bless in:
+**
+**	May you do good and not evil.
+**	May you find forgiveness for yourself and forgive others.
+**	May you share freely, never taking more than you give.
+**
+*************************************************************************/
 
-/* 
- * File:   ConnecttionDiagnosis.cpp
+/*
+ * File:   ConnectionDiagnosis.cpp
  * Author: CAI
- * 
- * Created on 2016年7月14日, 上午9:22
+ * Created on 2016/7/30, 10:23am
  */
 
 #include "ConnectionDiagnosis.h"
@@ -42,14 +46,12 @@ unsigned short ConnectionDiagnosis::cal_chksum(unsigned short *addr, int len)
     unsigned short *w = addr;
     unsigned short answer = 0;
 
-    /*把ICMP报头二进制数据以2字节为单位累加起来*/
     while (nleft > 1)
     {
         sum += *w++;
         nleft -= 2;
     }
 
-    /*若ICMP报头为奇数个字节，会剩下最后一字节。把最后一个字节视为一个2字节数据的高字节，这个2字节数据的低字节为0，继续累加*/
     if (nleft == 1)
     {
         *(unsigned char *) (&answer) = *(unsigned char *) w;
@@ -76,11 +78,9 @@ int ConnectionDiagnosis::pack(int pack_no)
 
     packsize = 8 + datalen;
 
-    //记录发送时间
     tval = (struct timeval *) icmp->icmp_data;
     gettimeofday(tval, NULL);
 
-    //校验算法
     icmp->icmp_cksum = cal_chksum((unsigned short *) icmp, packsize);
     return packsize;
 }
@@ -92,7 +92,6 @@ void ConnectionDiagnosis::send_packet()
     {
         nsend++;
 
-        //设置ICMP报头
         packetsize = pack(nsend);
 
         if (sendto(sockfd, sendpacket, packetsize, 0,
@@ -121,7 +120,6 @@ void ConnectionDiagnosis::recv_packet()
             return;
         }
 
-        //记录接收时间
         gettimeofday(&tvrecv, NULL);
         unpack(recvpacket, ret);
         nreceived++;
@@ -137,34 +135,26 @@ int ConnectionDiagnosis::unpack(char *buf, int len)
     double rtt;
     ip = (struct ip *) buf;
 
-    //求ip报头长度,即ip报头的长度标志乘4
     iphdrlen = ip->ip_hl << 2;
 
-    //越过ip报头,指向ICMP报头
     icmp = (struct icmp *) (buf + iphdrlen);
 
-    //ICMP报头及ICMP数据报的总长度
     len -= iphdrlen;
 
-    //小于ICMP报头长度则不合理
     if (len < 8)
     {
         printf("ICMP packets\'s length is less than 8\n");
         return -1;
     }
 
-    //确保所接收的是所发的的ICMP的回应
     if ((icmp->icmp_type == ICMP_ECHOREPLY) && (icmp->icmp_id == pid))
     {
         tvsend = (struct timeval *) icmp->icmp_data;
 
-        //接收和发送的时间差
         tv_sub(&tvrecv, tvsend);
 
-        //以毫秒为单位计算rtt
         rtt = tvrecv.tv_sec * 1000 + tvrecv.tv_usec / 1000;
 
-        //显示相关信息
         RECORD("%d byte from %s: icmp_seq=%u ttl=%d rtt=%.3f ms",
                len,
                inet_ntoa(from.sin_addr),
@@ -177,13 +167,10 @@ int ConnectionDiagnosis::unpack(char *buf, int len)
     {
         tvsend = (struct timeval *) icmp->icmp_data;
 
-        //接收和发送的时间差
         tv_sub(&tvrecv, tvsend);
 
-        //以毫秒为单位计算rtt
         rtt = tvrecv.tv_sec * 1000 + tvrecv.tv_usec / 1000;
 
-        //显示相关信息
         RECORD("%d byte from %s: icmp_seq=%u ttl=%d rtt=%.3f ms",
                len,
                inet_ntoa(from.sin_addr),
@@ -205,43 +192,14 @@ void ConnectionDiagnosis::tv_sub(struct timeval *out, struct timeval *in)
 
 int ConnectionDiagnosis::proceed(char* n_address)
 {
-    //生成使用ICMP的原始套接字
     if ((sockfd = socket(PF_INET, SOCK_RAW, IPPROTO_ICMP)) < 0)
     {
         perror("socket error");
         exit(1);
     }
 
-    //设置接收超时等待
     setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv_out, sizeof (tv_out));
 
-    // ..................................................................................................
-    /*
-        bzero(&hint, sizeof (hint));
-        hint.ai_family = AF_INET;
-        hint.ai_socktype = SOCK_STREAM;
-
-        int ret = getaddrinfo(n_address, NULL, &hint, &answer);
-        if (ret != 0)
-        {
-            fprintf(stderr, "getaddrinfo: %s\n",
-                    gai_strerror(ret));
-            exit(1);
-        }
-
-        void *addr;
-        char ipstr[INET_ADDRSTRLEN];
-        for (curr = answer; curr != NULL; curr = curr->ai_next)
-        {
-            dest_addr = curr->ai_addr;
-            inet_ntop(AF_INET, &(((struct sockaddr_in *)(curr->ai_addr))->sin_addr), ipstr, sizeof ipstr);
-            break;
-        }
-        freeaddrinfo(answer);
-     */
-    // ..................................................................................................
-
-    // ..................................................................................................
     struct hostent *host;
     unsigned long inaddr = 0l;
     bzero(&dest_addr, sizeof (dest_addr));
@@ -260,23 +218,16 @@ int ConnectionDiagnosis::proceed(char* n_address)
         fprintf(stderr, "unknow host:%s\n", n_address);
         exit(1);
     }
-    // ..................................................................................................
 
-    //获取进程id,用于设置ICMP的标志符
     pid = getpid();
 
-    //RECORD("PING %s(%s): %d bytes data in ICMP packets.", n_address,
-          //ipstr, datalen);
-    
     RECORD("PING %s(%s): %d bytes data in ICMP packets.", n_address,
            inet_ntoa(dest_addr.sin_addr), datalen);
 
     while (nsend < MAX_NO_PACKETS)
     {
-        //发送所有ICMP报文
         send_packet();
 
-        //接收所有ICMP报文
         recv_packet();
 
         usleep(100000);
@@ -286,6 +237,6 @@ int ConnectionDiagnosis::proceed(char* n_address)
 
     if (nreceived == 0)
         return DOESNOT_CONNECT;
-
-    return CONNECTED;
+    else
+    	return CONNECTED;
 }

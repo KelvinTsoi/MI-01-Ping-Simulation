@@ -1,14 +1,18 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
+/**************************************************************************
+**
+**	The author disclaims copyright to this source code.
+** 	In place of a legal notice, here is a bless in:
+**
+**	May you do good and not evil.
+**	May you find forgiveness for yourself and forgive others.
+**	May you share freely, never taking more than you give.
+**
+*************************************************************************/
 
-/* 
- * File:   ConnecttionDiagnosis.h
+/*
+ * File:   ConnectionDiagnosis.h
  * Author: CAI
- *
- * Created on 2016年7月14日, 上午9:22
+ * Created on 2016/7/30, 10:23am
  */
 
 #ifndef CONNECTTIONDIAGNOSIS_H
@@ -39,7 +43,14 @@
 #define PACKET_SIZE         4096
 #define BUFFER_SIZE         128
 #define MAX_WAIT_TIME       1       
-#define MAX_NO_PACKETS      4    
+#define MAX_NO_PACKETS      4
+#define LOG_PATH			"/tmp/pinglog"
+
+#define USAGE() \
+do \
+{	\
+	printf("Usage: ./ConnectionDiagnosis [destination]\n");	\
+}while(0)
 
 #define RECORD(format, ...) \
 do  \
@@ -54,7 +65,7 @@ do  \
     memset(timeStr, 0, BUFFER_SIZE);    \
     sprintf(timeStr, "[ %d-%02d-%02d %02d:%02d:%02d ]", 1900 + p->tm_year, 1 + p->tm_mon, p->tm_mday, 8 + p->tm_hour, p->tm_min, p->tm_sec); \
     sprintf(buffer, format, ## __VA_ARGS__); \
-    int fd_t = open("pinglog", O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR); \
+    int fd_t = open(LOG_PATH, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR); \
     write(fd_t, timeStr, strlen(timeStr));   \
     write(fd_t, " ", 1);   \
     write(fd_t, buffer, strlen(buffer));    \
@@ -67,148 +78,55 @@ class ConnectionDiagnosis
 {
 public:
 
-    /**
-     * @函数功能:构造函数
-     */
     ConnectionDiagnosis();
     
-    /**
-     * @函数功能:析构函数
-     */
     virtual ~ConnectionDiagnosis();
 
-    /**
-     * @函数功能：单例模式中的GetInstance方法，提供对外接口；
-     * @返回值 ConnecttionDiagnosis类指针；
-     */
-    //static ConnectionDiagnosis* GetInstance();
-
-    /*
-     * @函数功能: 执行函数
-     * @参数：n_address 主机域名或Ip地址
-     */
     int proceed(char* n_address);
-
 
 private:
 
-    /*
-     * @函数功能:发送ICMP报文
-     */
     void send_packet(void);
 
-    /*
-     * @函数功能：接收所有ICMP报文
-     */
     void recv_packet(void);
 
-    /*
-     * @函数功能:校验和算法
-     * @参数：addr
-     * @参数：len
-     * @返回值：
-     */
     unsigned short cal_chksum(unsigned short *addr, int len);
 
-    /*
-     * @函数功能:设置ICMP报头
-     * @参数：pack_no 
-     * @返回值：
-     */
     int pack(int pack_no);
 
-    /*
-     * @函数功能:剥去ICMP报头
-     * @参数：buf
-     * @参数：len
-     * @返回值：
-     */
     int unpack(char *buf, int len);
 
-    /*
-     * @函数功能:两个timeval结构相减
-     * @参数：out
-     * @参数：in
-     */
     void tv_sub(struct timeval *out, struct timeval *in);
 
-    /*
-     * @函数功能: 回显统计信息
-     */
     void statistics();
 
 private:
 
-    /**
-     * 单例模式中的类指针，由GetInstance分配内存空间；
-     */
-    //static ConnectionDiagnosis* Instance;
-
-    /**
-     * 发送报文字符串；
-     */
     char sendpacket[PACKET_SIZE];
 
-    /**
-     * 接收报文字符串；
-     */
     char recvpacket[PACKET_SIZE];
 
-    /*
-     * 套接字
-     */
     int sockfd;
 
-    /*
-     * 报文长度（字节）
-     */
     int datalen;
 
-    /*
-     * 发送包数量
-     */
     int nsend;
 
-    /*
-     * 接收包数量
-     */
     int nreceived;
 
-    /*
-     * 获取进程id,用于设置ICMP的标志符
-     */
     pid_t pid;
 
-    /*
-     * 
-     */
-    //struct sockaddr *dest_addr;
     struct sockaddr_in dest_addr;
 
-    /*
-     * 指向装有源地址的缓冲区
-     */
     struct sockaddr_in from;
 
-    /*
-     * 记录报文往返时延
-     */
     struct timeval tvrecv;
 
-    /*
-     * 记录输入地址信息
-     */
     struct in_addr addr;
 
-    /*
-     * 
-     */
     struct addrinfo *answer, hint, *curr;
 
     struct timeval tv_out;
-    
-    
-
 };
 
 #endif /* CONNECTTIONDIAGNOSIS_H */
