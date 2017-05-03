@@ -12,7 +12,7 @@
 /*
  * File:   Main.h
  * Author: CAI
- * Created on 2016/7/30, 10:23am
+ * Created on 2017/5/3, 10:00pm
  */
 
 #include "ConnectionDiagnosis.h"
@@ -25,6 +25,5 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	ConnectionDiagnosis com;
-	return com.proceed(argv[1]);
+	return ConnectionDiagnosis::Instance()->proceed(argv[1]);
 }

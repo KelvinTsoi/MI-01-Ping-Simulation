@@ -12,11 +12,11 @@
 /*
  * File:   ConnectionDiagnosis.h
  * Author: CAI
- * Created on 2016/7/30, 10:23am
+ * Created on 2017/5/3, 10:00pm
  */
 
-#ifndef CONNECTTIONDIAGNOSIS_H
-#define CONNECTTIONDIAGNOSIS_H
+#ifndef _CONNECTTIONDIAGNOSIS_H
+#define _CONNECTTIONDIAGNOSIS_H
 
 #include <stdio.h>
 #include <signal.h>
@@ -38,13 +38,11 @@
 #include <setjmp.h>
 #include <time.h>
 
-#define DOESNOT_CONNECT     -1
-#define CONNECTED           0
 #define PACKET_SIZE         4096
 #define BUFFER_SIZE         128
-#define MAX_WAIT_TIME       1       
+#define MAX_WAIT_TIME       1
 #define MAX_NO_PACKETS      4
-#define LOG_PATH			"/tmp/pinglog"
+#define LOG_PATH			"ping[%04d-%02d-%02d_%02d:%02d:%02d].log"
 
 #define USAGE() \
 do \
@@ -65,24 +63,26 @@ do  \
     memset(timeStr, 0, BUFFER_SIZE);    \
     sprintf(timeStr, "[ %d-%02d-%02d %02d:%02d:%02d ]", 1900 + p->tm_year, 1 + p->tm_mon, p->tm_mday, 8 + p->tm_hour, p->tm_min, p->tm_sec); \
     sprintf(buffer, format, ## __VA_ARGS__); \
-    int fd_t = open(LOG_PATH, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR); \
+    int fd_t = open(storePath, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR); \
     write(fd_t, timeStr, strlen(timeStr));   \
     write(fd_t, " ", 1);   \
     write(fd_t, buffer, strlen(buffer));    \
     write(fd_t, "\n", 1);   \
     close(fd_t); \
 } while(0)
-    
+
 
 class ConnectionDiagnosis
 {
 public:
 
-    ConnectionDiagnosis();
-    
-    virtual ~ConnectionDiagnosis();
-
     int proceed(char* n_address);
+
+    static ConnectionDiagnosis* Instance();
+
+protected:
+
+    ConnectionDiagnosis();
 
 private:
 
@@ -90,17 +90,19 @@ private:
 
     void recv_packet(void);
 
-    unsigned short cal_chksum(unsigned short *addr, int len);
-
     int pack(int pack_no);
 
     int unpack(char *buf, int len);
 
+    void statistics(void);
+
     void tv_sub(struct timeval *out, struct timeval *in);
 
-    void statistics();
+    unsigned short cal_chksum(unsigned short *addr, int len);
 
 private:
+
+    char storePath[BUFFER_SIZE];
 
     char sendpacket[PACKET_SIZE];
 
@@ -127,7 +129,9 @@ private:
     struct addrinfo *answer, hint, *curr;
 
     struct timeval tv_out;
+
+    static ConnectionDiagnosis* _instance;
 };
 
-#endif /* CONNECTTIONDIAGNOSIS_H */
+#endif /* _CONNECTTIONDIAGNOSIS_H */
 

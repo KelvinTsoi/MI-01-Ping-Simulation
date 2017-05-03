@@ -12,10 +12,12 @@
 /*
  * File:   ConnectionDiagnosis.cpp
  * Author: CAI
- * Created on 2016/7/30, 10:23am
+ * Created on 2017/5/3, 10:00pm
  */
 
 #include "ConnectionDiagnosis.h"
+
+ConnectionDiagnosis* ConnectionDiagnosis::_instance = NULL;
 
 ConnectionDiagnosis::ConnectionDiagnosis()
 {
@@ -25,13 +27,26 @@ ConnectionDiagnosis::ConnectionDiagnosis()
 
     tv_out.tv_sec = MAX_WAIT_TIME;
     tv_out.tv_usec = 0;
+
+    time_t timep;
+    struct tm *p;
+    time(&timep);
+    p = gmtime(&timep);
+    memset(storePath, 0x00, sizeof(storePath));
+    sprintf(storePath, LOG_PATH, 1900 + p->tm_year, 1 + p->tm_mon, p->tm_mday, 8 + p->tm_hour, p->tm_min, p->tm_sec);
 }
 
-ConnectionDiagnosis::~ConnectionDiagnosis()
+ConnectionDiagnosis* ConnectionDiagnosis::Instance()
 {
+	if (_instance == 0)
+	{
+		_instance = new ConnectionDiagnosis();
+	}
+	return _instance;
 }
 
-void ConnectionDiagnosis::statistics()
+
+void ConnectionDiagnosis::statistics(void)
 {
     RECORD("++++++++++++++++++++++++Ping statistics++++++++++++++++++++++");
     RECORD("%d packets transmitted, %d received , %%%d lost", nsend, nreceived,
@@ -128,7 +143,7 @@ void ConnectionDiagnosis::recv_packet()
 
 int ConnectionDiagnosis::unpack(char *buf, int len)
 {
-    int i, iphdrlen;
+    int iphdrlen;
     struct ip *ip;
     struct icmp *icmp;
     struct timeval *tvsend;
@@ -204,7 +219,7 @@ int ConnectionDiagnosis::proceed(char* n_address)
     unsigned long inaddr = 0l;
     bzero(&dest_addr, sizeof (dest_addr));
     dest_addr.sin_family = AF_INET;
-    if (inaddr = inet_addr(n_address) == INADDR_NONE)
+    if ((inaddr = inet_addr(n_address)) == INADDR_NONE)
     {
         if ((host = gethostbyname(n_address)) == NULL)
         {
@@ -235,8 +250,5 @@ int ConnectionDiagnosis::proceed(char* n_address)
 
     statistics();
 
-    if (nreceived == 0)
-        return DOESNOT_CONNECT;
-    else
-    	return CONNECTED;
+    return nreceived;
 }
