@@ -19,14 +19,25 @@
 
 ConnectionDiagnosis* ConnectionDiagnosis::_instance = NULL;
 
+ConnectionDiagnosis* ConnectionDiagnosis::pThis = NULL;
+
 ConnectionDiagnosis::ConnectionDiagnosis()
 {
+    pThis = this;
+
+    logStatus = LOG_VACANCY;
+
+    m_DiagnosingStatus = true;
+
     datalen = 56;
     nsend = 0;
     nreceived = 0;
 
-    tv_out.tv_sec = MAX_WAIT_TIME;
+    tv_out.tv_sec = TIME_LAPSE;
     tv_out.tv_usec = 0;
+
+    tvrecv.tv_sec = 0;
+    tvrecv.tv_usec = 0;
 
     time_t timep;
     struct tm *p;
@@ -45,11 +56,25 @@ ConnectionDiagnosis* ConnectionDiagnosis::Instance()
 	return _instance;
 }
 
+void ConnectionDiagnosis::sigActCallBackProc(int sig)
+{
+    if(!pThis)
+        return;
+    pThis->sigActProc(sig);
+}
+
+
+void ConnectionDiagnosis::sigActProc(int sig)
+{
+    if(m_DiagnosingStatus)
+        m_DiagnosingStatus = false;
+}
+
 
 void ConnectionDiagnosis::statistics(void)
 {
-    RECORD("++++++++++++++++++++++++Ping statistics++++++++++++++++++++++");
-    RECORD("%d packets transmitted, %d received , %%%d lost", nsend, nreceived,
+    PRINT_LOG("++++++++++++++++++++++++Ping statistics++++++++++++++++++++++");
+    PRINT_LOG("%d packets transmitted, %d received , %%%d lost", nsend, nreceived,
            (int) (((nsend - nreceived) * 1.0 / nsend) * 100));
     close(sockfd);
 }
@@ -103,7 +128,7 @@ int ConnectionDiagnosis::pack(int pack_no)
 void ConnectionDiagnosis::send_packet()
 {
     int packetsize;
-    if (nsend < MAX_NO_PACKETS)
+    if (nsend < MAX_ICMP_TIMES)
     {
         nsend++;
 
@@ -112,7 +137,7 @@ void ConnectionDiagnosis::send_packet()
         if (sendto(sockfd, sendpacket, packetsize, 0,
                    (struct sockaddr *) &dest_addr, sizeof (hint)) < 0)
         {
-            perror("sendto error");
+            PRINT_DEBUG("sendto error");
         }
     }
 }
@@ -131,7 +156,7 @@ void ConnectionDiagnosis::recv_packet()
 
         if (ret < 0)
         {
-            RECORD("Request time out");
+            PRINT_LOG("Request time out");
             return;
         }
 
@@ -148,68 +173,67 @@ int ConnectionDiagnosis::unpack(char *buf, int len)
     struct icmp *icmp;
     struct timeval *tvsend;
     double rtt;
+
     ip = (struct ip *) buf;
-
     iphdrlen = ip->ip_hl << 2;
-
     icmp = (struct icmp *) (buf + iphdrlen);
-
     len -= iphdrlen;
-
     if (len < 8)
     {
-        printf("ICMP packets\'s length is less than 8\n");
+        PRINT_DEBUG("ICMP packets\'s length is less than 8");
         return -1;
     }
 
+    tvsend = (struct timeval *) icmp->icmp_data;
+    tv_sub(&tvrecv, tvsend);
+    rtt = tvrecv.tv_sec * 1000 + (float)tvrecv.tv_usec / 1000;
+
+    PRINT_LOG("%d byte from %s: icmp_seq=%u ttl=%d rtt=%.3f ms",
+              len,
+              inet_ntoa(from.sin_addr),
+              icmp->icmp_seq,
+              ip->ip_ttl,
+              rtt
+    );
+
+
     if ((icmp->icmp_type == ICMP_ECHOREPLY) && (icmp->icmp_id == pid))
     {
-        tvsend = (struct timeval *) icmp->icmp_data;
-
-        tv_sub(&tvrecv, tvsend);
-
-        rtt = tvrecv.tv_sec * 1000 + tvrecv.tv_usec / 1000;
-
-        RECORD("%d byte from %s: icmp_seq=%u ttl=%d rtt=%.3f ms",
-               len,
-               inet_ntoa(from.sin_addr),
-               icmp->icmp_seq,
-               ip->ip_ttl,
-               rtt);
         return 0;
     }
     else
     {
-        tvsend = (struct timeval *) icmp->icmp_data;
-
-        tv_sub(&tvrecv, tvsend);
-
-        rtt = tvrecv.tv_sec * 1000 + tvrecv.tv_usec / 1000;
-
-        RECORD("%d byte from %s: icmp_seq=%u ttl=%d rtt=%.3f ms",
-               len,
-               inet_ntoa(from.sin_addr),
-               icmp->icmp_seq,
-               ip->ip_ttl,
-               rtt);
         return -1;
     }
 }
 
 void ConnectionDiagnosis::tv_sub(struct timeval *out, struct timeval *in)
 {
-    if ((out->tv_usec -= in->tv_usec) < 0)
+    if ((out->tv_usec - in->tv_usec) < 0)
     {
         --out->tv_sec;
+        out->tv_usec = in->tv_usec - out->tv_usec + MICROSECOND_CARRY;
+        out->tv_sec -= in->tv_sec;
     }
-    out->tv_sec -= in->tv_sec;
+    else
+    {
+        out->tv_sec -= in->tv_sec;
+        out->tv_usec -= in->tv_usec;
+    }
 }
 
-int ConnectionDiagnosis::proceed(char* n_address)
+int ConnectionDiagnosis::proceed(char* n_address, LOG_STATUS n_logStatus)
 {
+    logStatus = n_logStatus;
+
+    act.sa_handler = sigActCallBackProc;
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = 0;
+    sigaction(SIGINT, &act, 0);
+
     if ((sockfd = socket(PF_INET, SOCK_RAW, IPPROTO_ICMP)) < 0)
     {
-        perror("socket error");
+        PRINT_DEBUG("Set up ICMP socket error!");
         exit(1);
     }
 
@@ -223,28 +247,26 @@ int ConnectionDiagnosis::proceed(char* n_address)
     {
         if ((host = gethostbyname(n_address)) == NULL)
         {
-            perror("gethostbyname error");
+            PRINT_DEBUG("gethostbyname error");
             exit(1);
         }
         memcpy((char *) &dest_addr.sin_addr, host->h_addr, host->h_length);
     }
     else if(!inet_aton(n_address, &dest_addr.sin_addr))
     {
-        fprintf(stderr, "unknow host:%s\n", n_address);
+        PRINT_DEBUG("unknow host:%s", n_address);
         exit(1);
     }
 
     pid = getpid();
 
-    RECORD("PING %s(%s): %d bytes data in ICMP packets.", n_address,
+    PRINT_LOG("PING %s(%s): %d bytes data in ICMP packets.", n_address,
            inet_ntoa(dest_addr.sin_addr), datalen);
 
-    while (nsend < MAX_NO_PACKETS)
+    while (m_DiagnosingStatus)
     {
         send_packet();
-
         recv_packet();
-
         usleep(100000);
     }
 

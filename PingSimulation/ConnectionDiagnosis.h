@@ -37,30 +37,29 @@
 #include <errno.h>
 #include <setjmp.h>
 #include <time.h>
+#include <signal.h>
 
-#define PACKET_SIZE         4096
-#define BUFFER_SIZE         128
-#define MAX_WAIT_TIME       1
-#define MAX_NO_PACKETS      4
-#define LOG_PATH			"ping[%04d-%02d-%02d_%02d:%02d:%02d].log"
 
-#define USAGE() \
-do \
-{	\
-	printf("Usage: ./ConnectionDiagnosis [destination]\n");	\
-}while(0)
+#define PACKET_LIMIT        4096        /*  */
+#define UBOP                128         /* Universal Buffer Overflow Protection */
+#define TIME_LAPSE           1          /*  */
+#define MAX_NO_PACKETS       4          /*  */
+#define MAX_ICMP_TIMES      1024
+#define MICROSECOND_CARRY  1000000
+#define LOG_PATH			"ICMP[%04d-%02d-%02d_%02d:%02d:%02d].log"   /* File name to store ICMP information */
 
-#define RECORD(format, ...) \
-do  \
+//Redirect information
+#define PRINT_LOG(format, ...) \
+if(logStatus == LOG_REDIRECT)  \
 {   \
     time_t timep;   \
     struct tm *p;   \
     time(&timep);  \
     p = gmtime(&timep); \
-    char buffer[BUFFER_SIZE] = {0x00};  \
-    memset(buffer, 0, BUFFER_SIZE); \
-    char timeStr[BUFFER_SIZE] = {0x00};  \
-    memset(timeStr, 0, BUFFER_SIZE);    \
+    char buffer[UBOP] = {0x00};  \
+    memset(buffer, 0, UBOP); \
+    char timeStr[UBOP] = {0x00};  \
+    memset(timeStr, 0, UBOP);    \
     sprintf(timeStr, "[ %d-%02d-%02d %02d:%02d:%02d ]", 1900 + p->tm_year, 1 + p->tm_mon, p->tm_mday, 8 + p->tm_hour, p->tm_min, p->tm_sec); \
     sprintf(buffer, format, ## __VA_ARGS__); \
     int fd_t = open(storePath, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR); \
@@ -69,68 +68,155 @@ do  \
     write(fd_t, buffer, strlen(buffer));    \
     write(fd_t, "\n", 1);   \
     close(fd_t); \
-} while(0)
+}   \
+else    \
+{  \
+    printf(""format"\r\n",  ##__VA_ARGS__);    \
+}
+
+#define PRINT_DEBUG(format, ...) \
+printf("[%s %s %d] "format"\r\n", __FILE__, __FUNCTION__, __LINE__, ##__VA_ARGS__);
+
+
+//Redirect result or not
+typedef enum
+{
+    LOG_VACANCY = 0,
+    LOG_REDIRECT = 1,
+}LOG_STATUS;
 
 
 class ConnectionDiagnosis
 {
 public:
 
-    int proceed(char* n_address);
+    /**
+     * Summary: Module Entrance
+     * Parameters:
+     *  n_address: Ip Address store in string format
+     *  logStatus: Recording mode setup
+     * Return: Return zero if function success, other values signify function error code
+     */
+    int proceed(char* n_address, LOG_STATUS n_logStatus);
 
+    /**
+     * Summary: Singleton Pattern
+     * Return: Return a static pointer of Class ConnectionDiagnosis
+     */
     static ConnectionDiagnosis* Instance();
+
+private:
+
+    /**
+     * Summary: Call back function of Semaphore
+     * Parameters:
+     *  sig: Signal value
+     */
+    static void sigActCallBackProc(int sig);
+
+    /**
+     * Summary: Execute function of Semaphore
+     * Parameters:
+     *  sig: Signal value
+     */
+    void sigActProc(int sig);
+
+    static ConnectionDiagnosis* _instance;  /* A static pointer of Class ConnectionDiagnosis used for calling back */
+
+    static ConnectionDiagnosis* pThis;      /* A static pointer of Class ConnectionDiagnosis used for calling back */
 
 protected:
 
+    /**
+     * Summary: Constructor
+     */
     ConnectionDiagnosis();
 
 private:
 
+    /**
+     * Summary: Sending ICMP message
+     */
     void send_packet(void);
 
+    /**
+     * Summary: Receiving ICMP message
+     */
     void recv_packet(void);
 
+
+    /**
+     * Summary: Packaging ICMP message
+     * Parameters:
+     *  pack_no: Message sequence number
+     * Return: ICMP message size
+     */
     int pack(int pack_no);
 
+
+    /**
+     * Summary: Unpacking ICMP message
+     * Parameters:
+     *  buf: ICMP message content
+     *  len: ICMP message size
+     * Return:
+     */
     int unpack(char *buf, int len);
 
+
+    /**
+     * Summary: Statistics of Current Connection Test
+     */
     void statistics(void);
 
+    /**
+     * Summary: Calculating time difference between send and receive ICMP packet
+     * Parameters:
+     *  out: receive packet time record
+     *  in: send packet time record
+     */
     void tv_sub(struct timeval *out, struct timeval *in);
 
+
+    /**
+     * Summary:
+     * Parameters:
+     *  addr:
+     *  len:
+     * Return:
+     */
     unsigned short cal_chksum(unsigned short *addr, int len);
 
 private:
 
-    char storePath[BUFFER_SIZE];
+    int sockfd;     /*  */
 
-    char sendpacket[PACKET_SIZE];
+    int datalen;    /*  */
+    int nsend;      /*  */
+    int nreceived;  /*  */
 
-    char recvpacket[PACKET_SIZE];
+    pid_t pid;      /*  */
 
-    int sockfd;
+    struct sockaddr_in dest_addr;    /*  */
+    struct sockaddr_in from;         /*  */
+    struct timeval tvrecv;           /*  */
+    struct in_addr addr;             /*  */
+    struct addrinfo *answer;         /*  */
+    struct addrinfo hint;            /*  */
+    struct addrinfo *curr;           /*  */
 
-    int datalen;
+    struct timeval tv_out;           /*  */
 
-    int nsend;
+    char sendpacket[PACKET_LIMIT];   /*  */
+    char recvpacket[PACKET_LIMIT];   /*  */
 
-    int nreceived;
+    char storePath[UBOP];            /*  */
 
-    pid_t pid;
+    LOG_STATUS logStatus;            /*  */
 
-    struct sockaddr_in dest_addr;
+    bool m_DiagnosingStatus;         /*  */
 
-    struct sockaddr_in from;
-
-    struct timeval tvrecv;
-
-    struct in_addr addr;
-
-    struct addrinfo *answer, hint, *curr;
-
-    struct timeval tv_out;
-
-    static ConnectionDiagnosis* _instance;
+    struct sigaction act;           /* Semaphore Registration Information */
 };
 
 #endif /* _CONNECTTIONDIAGNOSIS_H */

@@ -21,9 +21,8 @@ int main(int argc, char** argv)
 {
 	if(argc != 2)
 	{
-		USAGE();
 		return 1;
 	}
 
-	return ConnectionDiagnosis::Instance()->proceed(argv[1]);
+	return ConnectionDiagnosis::Instance()->proceed(argv[1], LOG_VACANCY);
 }
